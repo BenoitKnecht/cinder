@@ -417,7 +417,7 @@ def fetch_to_volume_format(context, image_service,
 
         # NOTE(e0ne): check for free space in destination directory before
         # image conversion.
-        check_available_space(dest, virt_size, image_id)
+        check_available_space(dest, data.virtual_size, image_id)
 
         # NOTE(jdg): I'm using qemu-img convert to write
         # to the volume regardless if it *needs* conversion or not
@@ -511,7 +511,7 @@ def check_available_space(dest, image_size, image_id):
         dest = os.path.dirname(dest)
 
     free_space = psutil.disk_usage(dest).free
-    if free_space <= image_size:
+    if free_space < image_size:
         msg = ('There is no space to convert image. '
                'Requested: %(image_size)s, available: %(free_space)s'
                ) % {'image_size': image_size, 'free_space': free_space}

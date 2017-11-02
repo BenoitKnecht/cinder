@@ -1110,7 +1110,7 @@ class TestFetchToVolumeFormat(test.TestCase):
         self.assertFalse(mock_convert.called)
 
     @mock.patch('psutil.disk_usage')
-    @mock.patch('cinder.image.image_utils.check_available_space')
+    @mock.patch('os.path.isdir')
     @mock.patch('cinder.image.image_utils.convert_image')
     @mock.patch('cinder.image.image_utils.volume_utils.copy_volume')
     @mock.patch(
@@ -1124,10 +1124,11 @@ class TestFetchToVolumeFormat(test.TestCase):
     def test_check_no_available_space_error(self, mock_conf, mock_temp,
                                             mock_info, mock_fetch, mock_is_xen,
                                             mock_repl_xen, mock_copy,
-                                            mock_convert, mock_check_space,
+                                            mock_convert, mock_path_isdir,
                                             mock_disk_usage):
         ctxt = mock.sentinel.context
-        image_service = mock.Mock(temp_images=None)
+        attrs = {'show.return_value': {'disk_format': 'qcow2'}}
+        image_service = mock.Mock(temp_images=None, **attrs)
         image_id = mock.sentinel.image_id
         dest = mock.sentinel.dest
         volume_format = mock.sentinel.volume_format
@@ -1137,15 +1138,28 @@ class TestFetchToVolumeFormat(test.TestCase):
         size = 1234
         run_as_root = mock.sentinel.run_as_root
 
-        mock_disk_usage.return_value = units.Gi - 1
+        disk_usage = mock.sentinel.disk_usage
+
+        mock_path_isdir.return_value = True
+        mock_disk_usage.return_value = disk_usage
 
         data = mock_info.return_value
         data.file_format = volume_format
         data.backing_file = None
         data.virtual_size = units.Gi
 
-        mock_check_space.side_effect = exception.ImageTooBig(
-            image_id='fake_image_id', reason='test')
+        disk_usage.free = data.virtual_size
+
+        try:
+            image_utils.fetch_to_volume_format(
+                    ctxt, image_service, image_id, dest, volume_format, blocksize,
+                    user_id=user_id, project_id=project_id, size=size,
+                    run_as_root=run_as_root)
+        except exception.ImageTooBig:
+            self.fail("fetch_to_volume_format() raised exception when image "
+                    "virtual_size was equal to free space")
+
+        disk_usage.free = data.virtual_size - 1
 
         self.assertRaises(
             exception.ImageTooBig,
